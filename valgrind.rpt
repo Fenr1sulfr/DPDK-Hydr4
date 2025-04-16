@@ -1,0 +1,64 @@
+==9795== Memcheck, a memory error detector
+==9795== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==9795== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==9795== Command: ./build/hydra --vdev net_af_packet0,iface=dummy0 --vdev net_tap0,iface=tap0
+==9795== Parent PID: 2538
+==9795== 
+vex amd64->IR: unhandled instruction bytes: 0xC4 0xE2 0x78 0xF3 0xCE 0xF 0x84 0xFC 0x0 0x0
+vex amd64->IR:   REX=0 REX.W=0 REX.R=0 REX.X=0 REX.B=0
+vex amd64->IR:   VEX=0 VEX.L=0 VEX.nVVVV=0x0 ESC=NONE
+vex amd64->IR:   PFX.66=0 PFX.F2=0 PFX.F3=0
+==9795== valgrind: Unrecognised instruction at address 0x49fbebe.
+==9795==    at 0x49FBEBE: rte_lcore_var_alloc (in /usr/local/lib/x86_64-linux-gnu/librte_eal.so.25.0)
+==9795==    by 0x49F4FF6: rte_rand_init (in /usr/local/lib/x86_64-linux-gnu/librte_eal.so.25.0)
+==9795==    by 0x400647D: call_init.part.0 (dl-init.c:70)
+==9795==    by 0x4006567: call_init (dl-init.c:33)
+==9795==    by 0x4006567: _dl_init (dl-init.c:117)
+==9795==    by 0x40202C9: ??? (in /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2)
+==9795==    by 0x4: ???
+==9795==    by 0x1FFF00064E: ???
+==9795==    by 0x1FFF00065C: ???
+==9795==    by 0x1FFF000663: ???
+==9795==    by 0x1FFF00067F: ???
+==9795==    by 0x1FFF000686: ???
+==9795== Your program just tried to execute an instruction that Valgrind
+==9795== did not recognise.  There are two possible reasons for this.
+==9795== 1. Your program has a bug and erroneously jumped to a non-code
+==9795==    location.  If you are running Memcheck and you just saw a
+==9795==    warning about a bad jump, it's probably your program's fault.
+==9795== 2. The instruction is legitimate but Valgrind doesn't handle it,
+==9795==    i.e. it's Valgrind's fault.  If you think this is the case or
+==9795==    you are not sure, please let us know and we'll try to fix it.
+==9795== Either way, Valgrind will now raise a SIGILL signal which will
+==9795== probably kill your program.
+==9795== 
+==9795== Process terminating with default action of signal 4 (SIGILL)
+==9795==  Illegal opcode at address 0x49FBEBE
+==9795==    at 0x49FBEBE: rte_lcore_var_alloc (in /usr/local/lib/x86_64-linux-gnu/librte_eal.so.25.0)
+==9795==    by 0x49F4FF6: rte_rand_init (in /usr/local/lib/x86_64-linux-gnu/librte_eal.so.25.0)
+==9795==    by 0x400647D: call_init.part.0 (dl-init.c:70)
+==9795==    by 0x4006567: call_init (dl-init.c:33)
+==9795==    by 0x4006567: _dl_init (dl-init.c:117)
+==9795==    by 0x40202C9: ??? (in /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2)
+==9795==    by 0x4: ???
+==9795==    by 0x1FFF00064E: ???
+==9795==    by 0x1FFF00065C: ???
+==9795==    by 0x1FFF000663: ???
+==9795==    by 0x1FFF00067F: ???
+==9795==    by 0x1FFF000686: ???
+==9795== 
+==9795== HEAP SUMMARY:
+==9795==     in use at exit: 7,819 bytes in 111 blocks
+==9795==   total heap usage: 356 allocs, 245 frees, 119,433 bytes allocated
+==9795== 
+==9795== LEAK SUMMARY:
+==9795==    definitely lost: 0 bytes in 0 blocks
+==9795==    indirectly lost: 0 bytes in 0 blocks
+==9795==      possibly lost: 0 bytes in 0 blocks
+==9795==    still reachable: 7,819 bytes in 111 blocks
+==9795==         suppressed: 0 bytes in 0 blocks
+==9795== Reachable blocks (those to which a pointer was found) are not shown.
+==9795== To see them, rerun with: --leak-check=full --show-leak-kinds=all
+==9795== 
+==9795== For lists of detected and suppressed errors, rerun with: -s
+==9795== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
