@@ -4,6 +4,7 @@
 
  #include <stdint.h>
  #include <stdlib.h>
+ #include <stdatomic.h>
  #include <inttypes.h>
  #include <string.h>
  #include <stdio.h>
@@ -21,44 +22,44 @@
  #include <rte_mempool.h>
  
  /* Constants for port and ring configuration */
- #define RX_RING_SIZE     4096
- #define TX_RING_SIZE     4096
+ #define RX_RING_SIZE     4096 //4096
+ #define TX_RING_SIZE     4096  //4096
  #define NUM_MBUFS        (8192)   /* Significantly increased for 100 Gbps (8192*32)*/ 
- #define MBUF_CACHE_SIZE  512
- #define BURST_SIZE       64          /* Increased for higher throughput */
- #define MAX_RX_BURST     32          /* Keep RX burst reasonable */
- #define PREFETCH_OFFSET  4           /* Prefetch 4 packets ahead */
+ #define MBUF_CACHE_SIZE  512 //512
+ #define BURST_SIZE       64       //64   /* Increased for higher throughput */
+ #define MAX_RX_BURST     32        //32  /* Keep RX burst reasonable */
+ #define PREFETCH_OFFSET  4        //4   /* Prefetch 4 packets ahead */
  
  /* Number of replicated packets per original packet */
- #define REPLICATION_FACTOR 100
+ #define REPLICATION_FACTOR 250
  
  /* Ring sizes for inter-core communication */
- #define RING_SIZE        32768       /* Significantly increased */
+ #define RING_SIZE        32768    //32768   /* Significantly increased */
  
  /* Number of descriptors to allocate for each queue */
- #define NB_RXD           4096
- #define NB_TXD           4096
+ #define NB_RXD           4096 //4096
+ #define NB_TXD           4096 //4096
  
  /* Number of rings between cores */
- #define NUM_RX_WORKER_RINGS  4
- #define NUM_WORKER_TX_RINGS  8
+ #define NUM_RX_WORKER_RINGS  4     //4
+ #define NUM_WORKER_TX_RINGS  8 //8
  
  /* Shared memory zone for statistics */
  #define STATS_MEMZONE "statistics_memzone"
  
  /* Application statistics */
  struct app_stats {
-     volatile uint64_t rx_packets;
-     volatile uint64_t tx_packets;
-     volatile uint64_t dropped_packets;
-     volatile uint64_t worker_packets;
-     volatile uint64_t rx_processing_time_us;
-     volatile uint64_t worker_processing_time_us;
-     volatile uint64_t tx_processing_time_us;
-     uint64_t last_tsc;
+    atomic_uint_fast64_t rx_packets;
+    atomic_uint_fast64_t tx_packets;
+    atomic_uint_fast64_t dropped_packets;
+    atomic_uint_fast64_t worker_packets;
+    atomic_uint_fast64_t rx_processing_time_us;
+    atomic_uint_fast64_t worker_processing_time_us;
+    atomic_uint_fast64_t tx_processing_time_us;
+    uint64_t last_tsc;
      float rx_pps;
      float tx_pps;
-     volatile uint8_t stop_program;
+     atomic_uint_fast8_t stop_program;
  };
  
  /* Shared application statistics */
@@ -83,35 +84,38 @@
  }
  
  /* Display statistics every second */
- static void print_stats(void)
- {
-     const uint64_t total_rx = stats->rx_packets;
-     const uint64_t total_tx = stats->tx_packets;
-     const uint64_t total_dropped = stats->dropped_packets;
-     const uint64_t total_worker = stats->worker_packets;
+static void print_stats(void)
+{      
+    const uint64_t total_rx = atomic_load(&stats->rx_packets);
+    const uint64_t total_tx = atomic_load(&stats->tx_packets);
+    const uint64_t total_dropped = atomic_load(&stats->dropped_packets);
+    const uint64_t total_worker = atomic_load(&stats->worker_packets);
+    const uint64_t rx_pps = atomic_load(&stats->rx_pps);
+    const uint64_t tx_pps = atomic_load(&stats->tx_pps);
+    
+    printf("\033[2J\033[H"); /* Clear screen */
+    printf("============================ Statistics ============================\n");
+    printf("Packets received: %"PRIu64" (%llu Mpps)\n", 
+          total_rx, (unsigned long long)(rx_pps/1000000));
+    printf("Packets processed by workers: %"PRIu64"\n", total_worker);
+    printf("Packets transmitted: %"PRIu64" (%llu Mpps)\n", 
+          total_tx, (unsigned long long)(tx_pps/1000000));
+    printf("Packets dropped: %"PRIu64"\n", total_dropped);
+    printf("Processing times (microseconds):\n");
+    printf("  RX: %"PRIu64" | Worker: %"PRIu64" | TX: %"PRIu64"\n",
+          atomic_load(&stats->rx_processing_time_us),
+          atomic_load(&stats->worker_processing_time_us),
+          atomic_load(&stats->tx_processing_time_us));
+    printf("====================================================================\n");
      
-     printf("\033[2J\033[H"); /* Clear screen */
-     printf("============================ Statistics ============================\n");
-     printf("Packets received: %"PRIu64" (%.2f Mpps)\n", 
-            total_rx, stats->rx_pps/1000000);
-     printf("Packets processed by workers: %"PRIu64"\n", total_worker);
-     printf("Packets transmitted: %"PRIu64" (%.2f Mpps)\n", 
-            total_tx, stats->tx_pps/1000000);
-     printf("Packets dropped: %"PRIu64"\n", total_dropped);
-     printf("Processing times (microseconds):\n");
-     printf("  RX: %"PRIu64" | Worker: %"PRIu64" | TX: %"PRIu64"\n",
-            stats->rx_processing_time_us,
-            stats->worker_processing_time_us,
-            stats->tx_processing_time_us);
-     
-     /* Calculate throughput */
-     if (total_tx > 0) {
-         /* Assuming 1500 bytes per packet for estimation */
-         double throughput_gbps = (stats->tx_pps * 1500 * 8) / 1000000000.0;
-         printf("Estimated throughput: %.2f Gbps\n", throughput_gbps);
-     }
-     printf("====================================================================\n");
- }
+    /* Calculate throughput - use actual tx_pps (not in millions) */
+    if (tx_pps > 0) {
+        /* Assuming 1500 bytes per packet for estimation */
+        double throughput_gbps = (tx_pps * 1500 * 8) / 1000000000.0;
+        printf("Estimated throughput: %.2f Gbps\n", throughput_gbps);
+    }
+    printf("====================================================================\n");
+}
  
  /* Initialize statistics collection */
  static void init_stats(void)
@@ -125,36 +129,37 @@
      
      stats = mz->addr;
      memset(stats, 0, sizeof(struct app_stats));
-     stats->last_tsc = rte_rdtsc();
+    atomic_store(&stats->last_tsc, rte_rdtsc());
  }
  
  /* Update statistics */
- static void update_stats(void)
- {
-     static uint64_t prev_rx = 0, prev_tx = 0;
-     static uint64_t timer_tsc = 0;
-     uint64_t cur_tsc = rte_rdtsc();
-     
-     /* Initialize timer on first call */
-     if (timer_tsc == 0)
-         timer_tsc = cur_tsc;
-     
-     /* Update stats approximately once per second */
-     if (cur_tsc - timer_tsc > rte_get_timer_hz()) {
-         uint64_t rx_diff = stats->rx_packets - prev_rx;
-         uint64_t tx_diff = stats->tx_packets - prev_tx;
-         float time_diff_sec = (float)(cur_tsc - timer_tsc) / rte_get_timer_hz();
-         
-         stats->rx_pps = rx_diff / time_diff_sec;
-         stats->tx_pps = tx_diff / time_diff_sec;
-         
-         prev_rx = stats->rx_packets;
-         prev_tx = stats->tx_packets;
-         timer_tsc = cur_tsc;
-         
-         print_stats();
-     }
- }
+static void update_stats(void)
+{
+    static uint64_t prev_rx = 0, prev_tx = 0;
+    static uint64_t timer_tsc = 0;
+    uint64_t cur_tsc = rte_rdtsc();
+    
+    /* Initialize timer on first call */
+    if (timer_tsc == 0)
+        timer_tsc = cur_tsc;
+    
+    /* Update stats approximately once per second */
+    if (cur_tsc - timer_tsc > rte_get_timer_hz()) {
+        uint64_t rx_diff = atomic_load(&stats->rx_packets) - prev_rx;
+        uint64_t tx_diff = atomic_load(&stats->tx_packets) - prev_tx;
+        float time_diff_sec = (float)(cur_tsc - timer_tsc) / rte_get_timer_hz();
+        
+        /* Calculate packets per second (not in millions) */
+        atomic_store(&stats->rx_pps, rx_diff/time_diff_sec);
+        atomic_store(&stats->tx_pps, tx_diff/time_diff_sec);
+        
+        prev_rx = atomic_load(&stats->rx_packets);
+        prev_tx = atomic_load(&stats->tx_packets);
+        timer_tsc = cur_tsc;
+        
+        print_stats();
+    }
+}
  
  /*
   * Initializes a given port using global settings and with the RX buffers
@@ -273,7 +278,7 @@
                 "\tPerformance will not be optimal.\n", port);
      
      /* Main work of RX core */
-     while (!stats->stop_program) {
+     while (!atomic_load(&stats->stop_program)) {
          start_tsc = rte_rdtsc();
          
          /* Get burst of RX packets */
@@ -299,17 +304,18 @@
                  if (rte_ring_enqueue(rx_to_worker_rings[worker], bufs[i]) != 0) {
                      /* Ring full - drop the packet */
                      rte_pktmbuf_free(bufs[i]);
-                     stats->dropped_packets++;
+                     atomic_store(&stats->dropped_packets,atomic_load(&stats->dropped_packets) + 1);
                  }
              }
              
              /* Update statistics */
-             stats->rx_packets += nb_rx;
+             atomic_store(&stats->rx_packets,atomic_load(&stats->rx_packets) + nb_rx);
+           
          }
          
          end_tsc = rte_rdtsc();
          diff_tsc = end_tsc - start_tsc;
-         stats->rx_processing_time_us = diff_tsc * 1000000 / rte_get_timer_hz();
+         atomic_store(&stats->rx_processing_time_us, diff_tsc * 1000000 / rte_get_timer_hz());
          update_stats();
      }
      
@@ -341,11 +347,11 @@
              int replicated = 0;
              
              /* Basic packet modification - swap MAC addresses */
-             struct rte_ether_hdr *eth_hdr = rte_pktmbuf_mtod(buf, struct rte_ether_hdr *);
-             struct rte_ether_addr temp_addr;
-             rte_ether_addr_copy(&eth_hdr->dst_addr, &temp_addr);
-             rte_ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
-             rte_ether_addr_copy(&temp_addr, &eth_hdr->src_addr);
+            //  struct rte_ether_hdr *eth_hdr = rte_pktmbuf_mtod(buf, struct rte_ether_hdr *);
+            //  struct rte_ether_addr temp_addr;
+            //  rte_ether_addr_copy(&eth_hdr->dst_addr, &temp_addr);
+            //  rte_ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
+            //  rte_ether_addr_copy(&temp_addr, &eth_hdr->src_addr);
              
              /* Create replicated packets efficiently */
              copies[0] = buf;  /* First "copy" is the original */
@@ -382,7 +388,8 @@
              }
              
              /* Update worker stats */
-             stats->worker_packets += replicated;
+             atomic_store(&stats->worker_packets, 
+                          atomic_load(&stats->worker_packets) + replicated);
          }
          
          /* Flush any remaining packets */
@@ -399,7 +406,8 @@
          
          end_tsc = rte_rdtsc();
          diff_tsc = end_tsc - start_tsc;
-         stats->worker_processing_time_us = diff_tsc * 1000000 / rte_get_timer_hz();
+         atomic_store(&stats->worker_processing_time_us, 
+                     diff_tsc * 1000000 / rte_get_timer_hz());
      }
      
      return 0;
@@ -425,12 +433,12 @@
                 "\tPerformance will not be optimal.\n", port);
      
      /* Main work of TX core */
-     while (!stats->stop_program) {
+     while (!atomic_load(&stats->stop_program)) {
          start_tsc = rte_rdtsc();
          uint16_t total_sent = 0;
          
          /* Poll all worker-to-TX rings in round robin */
-         for (ring_idx = 0; ring_idx < NUM_WORKER_TX_RINGS && !stats->stop_program; ring_idx++) {
+         for (ring_idx = 0; ring_idx < NUM_WORKER_TX_RINGS && !atomic_load(&stats->stop_program); ring_idx++) {
              /* Dequeue packets from worker_to_tx ring */
              nb_rx = rte_ring_dequeue_burst(worker_to_tx_rings[ring_idx], 
                                            (void **)bufs, 
@@ -454,7 +462,8 @@
                  if (unlikely(nb_tx < nb_rx)) {
                      for (i = nb_tx; i < nb_rx; i++) {
                          rte_pktmbuf_free(bufs[i]);
-                         stats->dropped_packets++;
+                         atomic_store(&stats->dropped_packets, 
+                                         atomic_load(&stats->dropped_packets) + 1);
                      }
                  }
              }
@@ -462,7 +471,8 @@
          
          end_tsc = rte_rdtsc();
          diff_tsc = end_tsc - start_tsc;
-         stats->tx_processing_time_us = diff_tsc * 1000000 / rte_get_timer_hz();
+         atomic_store(&stats->tx_packets, 
+                     atomic_load(&stats->tx_packets) + total_sent);
          update_stats();
      }
      
@@ -600,7 +610,7 @@
      rte_eal_remote_launch(lcore_tx, &port_ids[portid], lcore_id);
      
      /* Main core just handles stats and checking for program termination */
-     while (!stats->stop_program) {
+     while (!atomic_load(&stats->stop_program)) {
          update_stats();
          rte_delay_ms(500);
      }
