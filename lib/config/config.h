@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <netinet/in.h>
+#include <arpa/inet.h> // For inet_pton
+#include <libconfig.h> // For YAML parsing
 
 extern uint16_t src_port;
 extern uint16_t internal_port;

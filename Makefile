@@ -7,7 +7,7 @@ APP = hydra
 # all source are stored in SRCS-y
 # SRCS-y := testing.c
 
-SRCS-y := main.c 
+SRCS-y := main.c ./lib/stats/stats.c
 PKGCONF ?= pkg-config
 
 # Build using pkg-config variables if possible
